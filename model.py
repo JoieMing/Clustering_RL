@@ -28,23 +28,3 @@ class my_model(nn.Module):
         out2 = F.normalize(out2, dim=1, p=2)
 
         return out1, out2
-
-
-class my_Q_net(nn.Module):
-    def __init__(self, dims):
-        super(my_Q_net, self).__init__()
-        self.lin1 = nn.Linear(dims[0], dims[1])
-        self.lin_cluster = nn.Linear(dims[0], dims[1])
-        self.lin2 = nn.Linear(dims[1], dims[2])
-        self.reset_parameters()
-        self.act = torch.nn.ReLU()
-
-    def reset_parameters(self):
-        self.lin1.reset_parameters()
-        self.lin2.reset_parameters()
-
-    def forward(self, x, cluster):
-        x = self.act(F.normalize(self.lin1(x), dim=1, p=2))
-        cluster = self.act(F.normalize(self.lin_cluster(cluster), dim=1, p=2))
-        x = F.softmax(self.lin2(torch.cat([x, cluster], dim=0)), dim=-1)
-        return x
