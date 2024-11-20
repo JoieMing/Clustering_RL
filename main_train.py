@@ -67,11 +67,11 @@ if __name__ == "__main__":
 
     # Create and check the custom environment
     args = get_args()
-    env = MyGraphEnv('cora', get_args())
+    env = MyGraphEnv('cora', args)
 
     # Create PPO model
     model = PPO("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps=args.max_steps * args.episode_num) 
+    model.learn(total_timesteps = args.step_num * args.episode_num) 
 
     # Load recorded rewards and plot
     mean_rewards = np.load(os.path.join(log_dir, "mean_rewards.npy"))
