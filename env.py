@@ -165,7 +165,7 @@ class MyGraphEnv(gym.Env):
 
         # store the loss in loss_MLP list
         self.loss_MLP.append(loss)
-        if self.time * self.episodes >= args.max_steps:
+        if self.time * self.episodes >= args.max_steps - 1:
             # open file result.csv and write down the dataset name(first line)
             file_name = "result.csv"
             file = open(file_name, "a+")
@@ -188,7 +188,7 @@ class MyGraphEnv(gym.Env):
         if self.time < args.step_num:
             self.records_r.append(reward)
 
-        if self.time == args.step_num:
+        if self.time == args.step_num - 1:
             file_name = "reward.csv"
             file = open(file_name, "a+")
             print(reward, file=file)
