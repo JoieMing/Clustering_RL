@@ -92,7 +92,7 @@ if __name__ == "__main__":
 
     # Load recorded rewards and plot
     mean_rewards = np.load(os.path.join(log_dir, "mean_rewards.npy"))
-    std_rewards = np.load(os.path.join(log_dir, "std_rewards.npy"))
+    # std_rewards = np.load(os.path.join(log_dir, "std_rewards.npy"))
 
     # plot_reward_convergence(
     # mean_rewards=mean_rewards,
