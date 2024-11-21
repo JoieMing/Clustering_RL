@@ -43,6 +43,23 @@ def plot_reward_convergence(mean_rewards, std_rewards, save_path=None):
     
     plt.show()
 
+def plot_average_reward(mean_rewards, save_path):
+    """
+    绘制平均奖励
+    """
+    episodes = np.arange(1, len(mean_rewards) + 1)
+    plt.plot(x, mean_rewards, label='PPO')
+    plt.axhline(y = 1, linestyle = '--', color='lightblue', label='Optimal')
+    plt.xlim(0, epiosodes)
+    plt.xlabel('Episodes')
+    plt.ylabel('Average Reward')
+    plt.legend(fontsize=12)
+    plt.grid(True)
+    if not exists(save_path):
+        makedirs(save_path)
+    plt.savefig(save_path)
+    plt.show()
+
 
 def plot_loss(steps, losses, save_path):
     """
@@ -77,11 +94,12 @@ if __name__ == "__main__":
     mean_rewards = np.load(os.path.join(log_dir, "mean_rewards.npy"))
     std_rewards = np.load(os.path.join(log_dir, "std_rewards.npy"))
 
-    plot_reward_convergence(
-    mean_rewards=mean_rewards,
-    std_rewards=std_rewards,
-    save_path=log_dir + "reward_convergence_plot.png"
-    )
+    # plot_reward_convergence(
+    # mean_rewards=mean_rewards,
+    # std_rewards=std_rewards,
+    # save_path=log_dir + "reward_convergence_plot.png"
+    # )
+    plot_average_reward(mean_rewards=mean_rewards, save_path=log_dir + "reward_convergence_plot.png")
 
 
     loss_MLP = np.load(os.path.join(log_dir, "loss_MLP.npy"))
