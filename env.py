@@ -51,7 +51,7 @@ class MyGraphEnv(gym.Env):
         self.best_cluster = 0
         self.records_r = []
         self.mean_rewards = []
-        self.std_rewards = []
+        # self.std_rewards = []
 
         self.reset()
 
@@ -183,7 +183,7 @@ class MyGraphEnv(gym.Env):
             # save the loss_MLP in the npy file
             np.save(os.path.join(log_dir, "loss_MLP.npy"), np.array(self.loss_MLP)) 
             np.save(os.path.join(log_dir, "mean_rewards.npy"), np.array(self.mean_rewards))
-            np.save(os.path.join(log_dir, "std_rewards.npy"), np.array(self.std_rewards))
+            # np.save(os.path.join(log_dir, "std_rewards.npy"), np.array(self.std_rewards))
 
         if self.time < args.step_num:
             self.records_r.append(reward)
@@ -195,9 +195,9 @@ class MyGraphEnv(gym.Env):
             file.close()
             tqdm.write( 'reward: {}'.format(reward))
             mean = np.mean(self.records_r)
-            std = np.std(self.records_r)
+            # std = np.std(self.records_r)
             self.mean_rewards.append(mean)
-            self.std_rewards.append(std)
+            # self.std_rewards.append(std)
 
             
         # Check termination
