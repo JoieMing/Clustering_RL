@@ -2,6 +2,8 @@ import os
 import warnings
 import numpy as np
 import seaborn as sns
+import tqdm
+import rich
 import matplotlib.pyplot as plt
 from stable_baselines3 import PPO
 from src.argument import get_args
@@ -49,18 +51,14 @@ def plot_average_reward(mean_rewards, save_path):
     """
     episodes = np.arange(1, len(mean_rewards) + 1)
     plt.plot(episodes, mean_rewards, label='PPO')
-    plt.xlim(0, len(episodes))  # Fix here: Set the x-axis range using numeric values
+    plt.axhline(y = 1, linestyle = '--', color='lightblue', label='Optimal')
+    plt.xlim(0, episodes)
     plt.xlabel('Episodes')
     plt.ylabel('Average Reward')
-    plt.title("Reward over Episodes")
     plt.legend(fontsize=12)
     plt.grid(True)
-    
-    # Check if the save directory exists
-    save_dir = os.path.dirname(save_path)
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    
+    if not os.exists(save_path):
+        os.makedirs(save_path)
     plt.savefig(save_path)
     plt.show()
 
@@ -83,32 +81,62 @@ def plot_loss(steps, losses, save_path):
 
 if __name__ == "__main__":
     warnings.filterwarnings("ignore")
-    log_dir = "./logs"
+    log_dir = "./logs/1121_16pm/"
     os.makedirs(log_dir, exist_ok=True)
 
     # Create and check the custom environment
     args = get_args()
-    env = MyGraphEnv('cora', args)
+    env = MyGraphEnv('cora', get_args())
 
     # Create PPO model
     model = PPO("MlpPolicy", env, verbose=1)
-    model.learn(total_timesteps = args.step_num * args.episode_num) 
+    model.learn(**args.learning_settings) 
+
+    # save the model
+    model.save(log_dir + "model")
+    # save value in the env
+    np.save(os.path.join(log_dir, "loss_MLP.npy"), np.array(env.loss_MLP))
+    np.save(os.path.join(log_dir, "mean_rewards.npy"), np.array(env.mean_rewards))
+    np.save(os.path.join(log_dir, "action.npy"), np.array(env.actions))
+    # print the best_nmi and best_ari and cluster_num
+    print("Optimization Finished!")
+    print('best_nmi: {}, best_ari: {}, cluster_num: {}'.format(env.best_nmi, env.best_ari, env.best_cluster))
+    # open file result.csv and write down the dataset name(first line)
+    file_name = "result.csv"
+    file = open(file_name, "a+")
+    print(args.dataset, file=file)
+    # print the value of key for the best cluster, best nmi, best ari in info
+    print(env.best_cluster, env.best_nmi, env.best_ari, file=file)
+    file.close()
+
+    # close the environment
+    env.close()
 
     # Load recorded rewards and plot
-    mean_rewards = np.load(os.path.join(log_dir, "mean_rewards.npy"))
+    # mean_rewards = np.load(os.path.join(log_dir, "mean_rewards.npy"))
     # std_rewards = np.load(os.path.join(log_dir, "std_rewards.npy"))
+    # actions = np.load(os.path.join(log_dir, "action.npy"))
+    # steps = np.arange(len(actions))
+    # # 绘制散点图
+    # plt.figure(figsize=(8, 6))
+    # plt.scatter(steps, actions, alpha=0.7, edgecolors='k')
+    # plt.title("Scatter Plot of Data")
+    # plt.xlabel("Steps")
+    # plt.ylabel("Cluster Number Decision")
+    # plt.grid(True)
+    # plt.show()
 
     # plot_reward_convergence(
     # mean_rewards=mean_rewards,
     # std_rewards=std_rewards,
     # save_path=log_dir + "reward_convergence_plot.png"
     # )
-    plot_average_reward(mean_rewards=mean_rewards, save_path=log_dir + "reward_convergence_plot.png")
+    # plot_average_reward(mean_rewards=mean_rewards, save_path=log_dir + "reward_convergence_plot.png")
 
 
-    loss_MLP = np.load(os.path.join(log_dir, "loss_MLP.npy"))
-    steps = np.arange(len(loss_MLP))
-    plot_loss(steps, loss_MLP, log_dir + "/loss_plot.png")
+    # loss_MLP = np.load(os.path.join(log_dir, "loss_MLP.npy"))
+    # steps = np.arange(len(loss_MLP))
+    # plot_loss(steps, loss_MLP, log_dir + "/loss_plot.png")
 
     
 
