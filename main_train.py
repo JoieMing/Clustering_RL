@@ -48,15 +48,15 @@ def plot_average_reward(mean_rewards, save_path):
     绘制平均奖励
     """
     episodes = np.arange(1, len(mean_rewards) + 1)
-    plt.plot(x, mean_rewards, label='PPO')
+    plt.plot(episodes, mean_rewards, label='PPO')
     plt.axhline(y = 1, linestyle = '--', color='lightblue', label='Optimal')
-    plt.xlim(0, epiosodes)
+    plt.xlim(0, episodes)
     plt.xlabel('Episodes')
     plt.ylabel('Average Reward')
     plt.legend(fontsize=12)
     plt.grid(True)
-    if not exists(save_path):
-        makedirs(save_path)
+    if not os.exists(save_path):
+        os.makedirs(save_path)
     plt.savefig(save_path)
     plt.show()
 
