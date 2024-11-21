@@ -11,9 +11,9 @@ def get_args():
 
 
     #training parameters
-    parser.add_argument('--step_num', type=int, default=50)  # 回合数
+    parser.add_argument('--step_num', type=int, default=20)  # 回合数
     parser.add_argument('--episode_num', type=int, default=100)  # 回合数
-    parser.add_argument('--max_steps', type=int, default=5000)  # 最大步数
+    parser.add_argument('--max_steps', type=int, default=2000)  # 最大步数
 
     # E net
     parser.add_argument('--E_epochs', type=int, default=400, help='Number of epochs to train E.')
