@@ -171,11 +171,11 @@ class MyGraphEnv(gym.Env):
             file = open(file_name, "a+")
             print(args.dataset, file=file)
             # print the value of key for the best cluster, best nmi, best ari in info
-            print(self.info['best_cluster'], self.info['nmi'], self.info['ari'], file=file)
+            print(info['best_cluster'], info['nmi'], info['ari'], file=file)
             file.close()
             # print the best_nmi and best_ari and cluster_num
             tqdm.write("Optimization Finished!")
-            tqdm.write('best_nmi: {}, best_ari: {}, cluster_num: {}'.format(self.info['nmi'], self.info['ari'], self.info['best_cluster']))
+            tqdm.write('best_nmi: {}, best_ari: {}, cluster_num: {}'.format(info['nmi'], info['ari'], info['best_cluster']))
 
             # check the address of the file exists if not create
             log_dir = "./logs"
