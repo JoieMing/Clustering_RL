@@ -51,6 +51,7 @@ class MyGraphEnv(gym.Env):
         self.best_cluster = 0
         self.records_r = []
         self.mean_rewards = []
+        self.actions = []
         # self.std_rewards = []
 
         self.reset()
@@ -150,8 +151,8 @@ class MyGraphEnv(gym.Env):
     def step(self, action):
         # Execute one time step within the environment
         # Update the state
-        self.time += 1
         args = self.args
+        self.time += 1
         args.cluster_num = action + 2
         observation, reward, nmi, ari, loss = self._two_view_MLP(action=action)
     
@@ -165,7 +166,25 @@ class MyGraphEnv(gym.Env):
 
         # store the loss in loss_MLP list
         self.loss_MLP.append(loss)
-        if self.time * self.episodes >= args.max_steps - 1:
+        self.actions.append(args.cluster_num)
+
+        if self.time >= args.step_num:
+            terminated = True
+            self.records_r.append(reward)
+            mean = np.mean(self.records_r)
+            self.mean_rewards.append(mean)
+            file_name = "reward_1121_100ep3.csv"
+            file = open(file_name, "a+")
+            print(reward, mean, file=file)
+            file.close()
+            tqdm.write('episode_reward: {}, mean_reward: {}'.format(reward, mean))
+            
+        else:
+            terminated = False
+            self.records_r.append(reward)
+            
+        
+        if self.time + self.episodes * args.step_num >= args.max_steps:
             # open file result.csv and write down the dataset name(first line)
             file_name = "result.csv"
             file = open(file_name, "a+")
@@ -178,27 +197,12 @@ class MyGraphEnv(gym.Env):
             tqdm.write('best_nmi: {}, best_ari: {}, cluster_num: {}'.format(info['nmi'], info['ari'], info['best_cluster']))
 
             # check the address of the file exists if not create
-            log_dir = "./logs"
+            log_dir = "./logs/1121/"
             os.makedirs(log_dir, exist_ok=True)
             # save the loss_MLP in the npy file
             np.save(os.path.join(log_dir, "loss_MLP.npy"), np.array(self.loss_MLP)) 
             np.save(os.path.join(log_dir, "mean_rewards.npy"), np.array(self.mean_rewards))
-            # np.save(os.path.join(log_dir, "std_rewards.npy"), np.array(self.std_rewards))
-
-        if self.time < args.step_num:
-            self.records_r.append(reward)
-
-        if self.time == args.step_num - 1:
-            file_name = "reward.csv"
-            file = open(file_name, "a+")
-            print(reward, file=file)
-            file.close()
-            tqdm.write( 'reward: {}'.format(reward))
-            mean = np.mean(self.records_r)
-            # std = np.std(self.records_r)
-            self.mean_rewards.append(mean)
-            # self.std_rewards.append(std)
-
+            np.save(os.path.join(log_dir, "action.npy"), np.array(self.actions))
             
         # Check termination
         # if nmi >= 0.99:
