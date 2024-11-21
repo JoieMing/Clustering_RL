@@ -49,14 +49,18 @@ def plot_average_reward(mean_rewards, save_path):
     """
     episodes = np.arange(1, len(mean_rewards) + 1)
     plt.plot(episodes, mean_rewards, label='PPO')
-    plt.axhline(y = 1, linestyle = '--', color='lightblue', label='Optimal')
-    plt.xlim(0, episodes)
+    plt.xlim(0, len(episodes))  # Fix here: Set the x-axis range using numeric values
     plt.xlabel('Episodes')
     plt.ylabel('Average Reward')
+    plt.title("Reward over Episodes")
     plt.legend(fontsize=12)
     plt.grid(True)
-    if not os.exists(save_path):
-        os.makedirs(save_path)
+    
+    # Check if the save directory exists
+    save_dir = os.path.dirname(save_path)
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    
     plt.savefig(save_path)
     plt.show()
 
