@@ -89,7 +89,7 @@ if __name__ == "__main__":
     env = MyGraphEnv('cora', get_args())
 
     # Create PPO model
-    model = PPO("MlpPolicy", env, verbose=1)
+    model = PPO("MlpPolicy", env, verbose=1, n_steps=10)
     model.learn(**args.learning_settings) 
 
     # save the model
