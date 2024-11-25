@@ -24,7 +24,6 @@ class MyGraphEnv(gym.Env):
         # Example when using discrete actions:
         super().__init__()
         self.time = 0
-        self.episodes = 0
         self.dataset = dataset
         self.args = get_args()
         self.loss_MLP = []
@@ -41,6 +40,12 @@ class MyGraphEnv(gym.Env):
         self.action_space = spaces.Discrete(self.action_space_dim)
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2719,500), dtype=np.float32)
 
+        # self.observation_space = spaces.Dict({
+        #     "continuous": spaces.Box(low= -np.inf, high= np.inf, shape=(2719,500), dtype=np.float32),  # Continuous space
+        #     "discrete": spaces.Discrete(self.action_space_dim),  # Discrete space
+        # })
+
+
         # Initialize model
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.model = my_model([self.sm_fea_s.shape[1]] + self.args.dims).to(self.device)
@@ -52,6 +57,9 @@ class MyGraphEnv(gym.Env):
         self.records_r = []
         self.mean_rewards = []
         self.actions = []
+        self.issave = args.issave
+        self.save_path = args.dir+ args.save_file_name
+
         # self.std_rewards = []
 
         self.reset()
@@ -78,9 +86,15 @@ class MyGraphEnv(gym.Env):
         return infoNEC, state
     
     def _compute_clustering_loss(self,dis): 
-        q = dis / (dis.sum(-1).reshape(-1, 1))
+        # print(dis)
+        # print(dis.sum(-1).reshape(-1, 1))
+        new_dis = (dis + 1).pow(-1)
+        q = new_dis / (new_dis.sum(-1).reshape(-1, 1))
+        # print(q)
         p = q.pow(2) / q.sum(0).reshape(1, -1)
+        # print(p.shape)
         p = p / p.sum(-1).reshape(-1, 1)
+        # print(p.shape)
         pq_loss = F.kl_div(q.log(), p)
         
         return pq_loss
@@ -104,7 +118,7 @@ class MyGraphEnv(gym.Env):
 
         args.cluster_num = action + 2       # the number of clusters from 2 to 11
         nmi, ari, self.predict_labels, centers, dis = clustering(cur_state.detach(), self.true_labels, args.cluster_num, device=self.device)   
-        dis = (cur_state.unsqueeze(1) - centers.unsqueeze(0)).pow(2).sum(-1) + 1
+        dis = (cur_state.unsqueeze(1) - centers.unsqueeze(0)).pow(2).sum(-1)
 
         # compute the clustering guidance loss function (MLP)
         pq_loss = self._compute_clustering_loss(dis)
@@ -121,7 +135,17 @@ class MyGraphEnv(gym.Env):
         observation_ini = np.concatenate([next_state.cpu().detach().numpy(), next_cluster_state.cpu().detach().numpy()], axis=0)
         rows_to_add = 2719 - observation_ini.shape[0]
         observation = np.pad(observation_ini, pad_width=((0, rows_to_add), (0, 0)), mode='constant', constant_values=-1)
-        reward = (center_dis.detach() - torch.min(dis, dim=1).values.mean().detach()).item()
+        # observation = {}
+        # observation["continuous"] = np.pad(observation_ini, pad_width=((0, rows_to_add), (0, 0)), mode='constant', constant_values=-1)
+        # observation["discrete"] = action
+        # reward = (center_dis.detach() - torch.min(dis, dim=1).values.mean().detach()).item() - pq_loss.item() * 1000
+        reward = center_dis.detach() - torch.min(dis, dim=1).values.mean().detach().item()
+        # print(a)
+        # reward = -(pq_loss.item()) 
+        # print(reward)
+        if self.issave:
+            torch.save(self.model.state_dict(), self.save_path)
+
         return observation, reward, nmi, ari, loss.item()
 
 
@@ -131,7 +155,6 @@ class MyGraphEnv(gym.Env):
         super().reset(seed=seed)
         args = self.args
         self.time = 0
-        self.episodes += 1
         args.cluster_num = np.random.randint(0, 9) + 2
         nmi, ari, self.predict_labels, _, _ = clustering(self.sm_fea_s.detach(), self.true_labels, args.cluster_num, device=self.device)
         target = torch.FloatTensor(self.adj_1st).to(self.device)
@@ -139,6 +162,9 @@ class MyGraphEnv(gym.Env):
         observation_ini = np.concatenate([state.cpu().detach().numpy(), cluster_state.cpu().detach().numpy()], axis=0)
         rows_to_add = 2719 - observation_ini.shape[0]
         observation = np.pad(observation_ini, pad_width=((0, rows_to_add), (0, 0)), mode='constant', constant_values=-1)
+        # observation = {}
+        # observation["continuous"] = np.pad(observation_ini, pad_width=((0, rows_to_add), (0, 0)), mode='constant', constant_values=-1)
+        # observation["discrete"] = args.cluster_num-2
         if self.best_nmi < nmi:
             self.best_nmi = nmi
             self.best_ari = ari
@@ -153,6 +179,7 @@ class MyGraphEnv(gym.Env):
         # Update the state
         args = self.args
         self.time += 1
+        # print("time: ", self.timef)
         args.cluster_num = action + 2
         observation, reward, nmi, ari, loss = self._two_view_MLP(action=action)
     
@@ -167,49 +194,48 @@ class MyGraphEnv(gym.Env):
         # store the loss in loss_MLP list
         self.loss_MLP.append(loss)
         self.actions.append(args.cluster_num)
+        self.records_r.append(reward)
 
         if self.time >= args.step_num:
             terminated = True
-            self.records_r.append(reward)
+            print(terminated)
             mean = np.mean(self.records_r)
             self.mean_rewards.append(mean)
-            file_name = "reward_1121_100ep3.csv"
-            file = open(file_name, "a+")
-            print(reward, mean, file=file)
-            file.close()
+            # file_name = "reward_1121_4pm.csv"
+            # file = open(file_name, "a+")
+            # print(reward, mean, file=file)
+            # file.close()
             tqdm.write('episode_reward: {}, mean_reward: {}'.format(reward, mean))
-            
         else:
             terminated = False
-            self.records_r.append(reward)
-            
         
-        if self.time + self.episodes * args.step_num >= args.max_steps:
-            # open file result.csv and write down the dataset name(first line)
-            file_name = "result.csv"
-            file = open(file_name, "a+")
-            print(args.dataset, file=file)
-            # print the value of key for the best cluster, best nmi, best ari in info
-            print(info['best_cluster'], info['nmi'], info['ari'], file=file)
-            file.close()
-            # print the best_nmi and best_ari and cluster_num
-            tqdm.write("Optimization Finished!")
-            tqdm.write('best_nmi: {}, best_ari: {}, cluster_num: {}'.format(info['nmi'], info['ari'], info['best_cluster']))
+        # if self.time + self.episodes * args.step_num >= args.max_steps:
+        #     # open file result.csv and write down the dataset name(first line)
+        #     file_name = "result.csv"
+        #     file = open(file_name, "a+")
+        #     print(args.dataset, file=file)
+        #     # print the value of key for the best cluster, best nmi, best ari in info
+        #     print(info['best_cluster'], info['nmi'], info['ari'], file=file)
+        #     file.close()
+        #     # print the best_nmi and best_ari and cluster_num
+        #     tqdm.write("Optimization Finished!")
+        #     tqdm.write('best_nmi: {}, best_ari: {}, cluster_num: {}'.format(info['nmi'], info['ari'], info['best_cluster']))
 
-            # check the address of the file exists if not create
-            log_dir = "./logs/1121/"
-            os.makedirs(log_dir, exist_ok=True)
-            # save the loss_MLP in the npy file
-            np.save(os.path.join(log_dir, "loss_MLP.npy"), np.array(self.loss_MLP)) 
-            np.save(os.path.join(log_dir, "mean_rewards.npy"), np.array(self.mean_rewards))
-            np.save(os.path.join(log_dir, "action.npy"), np.array(self.actions))
+        #     # check the address of the file exists if not create
+        #     log_dir = "./logs/1121/"
+        #     os.makedirs(log_dir, exist_ok=True)
+        #     # save the loss_MLP in the npy file
+        #     np.save(os.path.join(log_dir, "loss_MLP.npy"), np.array(self.loss_MLP)) 
+        #     np.save(os.path.join(log_dir, "mean_rewards.npy"), np.array(self.mean_rewards))
+        #     np.save(os.path.join(log_dir, "action.npy"), np.array(self.actions))
+
             
         # Check termination
         # if nmi >= 0.99:
         #     terminated = True
         # else:
         #     terminated = False
-        terminated = self.time > self.args.step_num
+        
         # terminated = nmi >= 0.99  # Custom termination criterion
         truncated = False
 

@@ -40,6 +40,7 @@ def kmeans_plusplus_init(X, num_clusters, device):
     """
     n_samples, n_features = X.shape
     centers = torch.empty((num_clusters, n_features), dtype=X.dtype).to(device)
+
     center_id = np.random.choice(n_samples, 1, replace=False)[0]
     n_local_trials = 2 + int(np.log(num_clusters))
 
