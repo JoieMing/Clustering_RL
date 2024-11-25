@@ -11,15 +11,18 @@ def get_args():
 
 
     #training parameters
-    parser.add_argument('--step_num', type=int, default=20)  # 回合数
-    parser.add_argument('--episode_num', type=int, default=100)  # 回合数
-    parser.add_argument('--max_steps', type=int, default=2000)  # 最大步数
+    parser.add_argument('--step_num', type=int, default=40)  # 回合数   
+    parser.add_argument('--episode_num', type=int, default=10)  # 回合数
+    # parser.add_argument('--max_steps', type=int, default=200)  # 最大步数
 
     # E net
-    parser.add_argument('--E_epochs', type=int, default=400, help='Number of epochs to train E.')
+    parser.add_argument('--E_epochs', type=int, default=200, help='Number of epochs to train E.')
     parser.add_argument('--n_input', type=int, default=1000, help='Number of units in hidden layer 1.')
     parser.add_argument('--dims', type=int, default=[500], help='Number of units in hidden layer 1.')
     parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rate.')
+    parser.add_argument('--issave', type = bool, default = True, help='whether save the MLP model.')
+    parser.add_argument('--dir', type=str, default = "./logs/1125_400/",help= "save directory for MLP model.")
+    parser.add_argument('--save_file_name', type=str, default="MLP.pth", help='save file name for MLP model.')
 
 
     args = parser.parse_args()
@@ -27,6 +30,13 @@ def get_args():
     args.gnnlayers = 2
     args.adj_path = "dataset/{}/{}_adj_1st_{}.npy".format(args.dataset, args.dataset, args.gnnlayers)
     args.fea_sm_path = "dataset/{}/{}_feat_sm_{}.npy".format(args.dataset, args.dataset, args.gnnlayers)
+
+    args.learning_settings = {
+        'progress_bar': True,
+        'reset_num_timesteps': True,
+        'total_timesteps': args.episode_num * args.step_num,
+        'log_interval': 10,
+    }
 
     # args.model_settings = {
     #     ## need to be modified for PPO
@@ -41,3 +51,4 @@ def get_args():
 
     return args
 
+    # n_steps = 40, eposide = 10, step = 50
