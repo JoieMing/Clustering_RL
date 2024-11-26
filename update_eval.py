@@ -105,7 +105,7 @@ if __name__ == "__main__":
     env = DummyVecEnv([lambda: env])  # Wrap with VecEnv
 
     # Evaluate the model
-    avg_cluster_num ,avg_action, avg_nmi, std_nmi, avg_ari, std_ari = evaluate_and_record_metrics(model, env, args, n_eval_episodes=5, steps_per_episode=20)
+    avg_cluster_num ,avg_action, avg_nmi, std_nmi, avg_ari, std_ari = evaluate_and_record_metrics(model, env, args, n_eval_episodes=5)
 
     print(f"Average NMI: {avg_nmi}, Standard Deviation NMI: {std_nmi}")
     print(f"Average ARI: {avg_ari}, Standard Deviation ARI: {std_ari}")
