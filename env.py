@@ -24,13 +24,13 @@ class MyGraphEnv(gym.Env):
         # Example when using discrete actions:
         super().__init__()
         self.time = 0
-        self.episodes = 0
         self.dataset = dataset
         self.args = get_args()
         self.loss_MLP = []
 
         # Load data
         self.features, self.true_labels, self.A = load_graph_data(self.dataset, show_details=False)
+        print(self.features.shape)
         self.adj_1st = np.load(args.adj_path, allow_pickle=True)
         self.sm_fea_s = torch.FloatTensor(np.load(args.fea_sm_path, allow_pickle=True))
         # self.sm_fea_s = torch.FloatTensor(self.sm_fea_s)
@@ -39,19 +39,29 @@ class MyGraphEnv(gym.Env):
         self.state_space_dim = self.features.shape[1]
         self.action_space_dim = 9  # Assuming the action range is fixed as in the script
         self.action_space = spaces.Discrete(self.action_space_dim)
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(2719,500), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(self.features.shape[0]+11,args.dims[0]), dtype=np.float32)
+
+        # self.observation_space = spaces.Dict({
+        #     "continuous": spaces.Box(low= -np.inf, high= np.inf, shape=(2719,500), dtype=np.float32),  # Continuous space
+        #     "discrete": spaces.Discrete(self.action_space_dim),  # Discrete space
+        # })
+
 
         # Initialize model
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        # self.device = "cpu"
         self.model = my_model([self.sm_fea_s.shape[1]] + self.args.dims).to(self.device)
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.args.lr)
-
+        self.state = torch.zeros(self.features.shape[0],args.dims[0]).to(self.device)
         self.best_nmi = 0
         self.best_ari = 0
         self.best_cluster = 0
         self.records_r = []
         self.mean_rewards = []
         self.actions = []
+        self.issave = args.issave
+        self.save_path = args.dir+ args.save_file_name
+
         # self.std_rewards = []
 
         self.reset()
@@ -78,16 +88,24 @@ class MyGraphEnv(gym.Env):
         return infoNEC, state
     
     def _compute_clustering_loss(self,dis): 
-        q = dis / (dis.sum(-1).reshape(-1, 1))
+        # print(dis)
+        # print(dis.sum(-1).reshape(-1, 1))
+        new_dis = (dis + 1).pow(-1)
+        q = new_dis / (new_dis.sum(-1).reshape(-1, 1))
+        # print(q)
         p = q.pow(2) / q.sum(0).reshape(1, -1)
+        # print(p.shape)
         p = p / p.sum(-1).reshape(-1, 1)
+        # print(p.shape)
         pq_loss = F.kl_div(q.log(), p)
         
         return pq_loss
     
     def _train_MLP(self,target):
+        
         self.model.train()
         self.optimizer.zero_grad()
+        
         z1, z2 = self.model(self.sm_fea_s.to(self.device)) # z1, z2 embedding
         # compute loss function
         mask = torch.ones([target.shape[0] * 2, target.shape[0] * 2]).to(self.device)
@@ -95,33 +113,98 @@ class MyGraphEnv(gym.Env):
         infoNEC, state = self._compute_infoNEC_loss(z1, z2, mask, target)
         # compute the mean feature state of the data points in that cluster.
         cluster_state = scatter(state, torch.tensor(self.predict_labels).to(self.device), dim=0, reduce="mean")
+
         return state, cluster_state, infoNEC
     
     def _two_view_MLP(self,action,alpha=10):
         target = torch.FloatTensor(self.adj_1st).to(self.device)
         args = self.args
-        cur_state, _, infoNEC = self._train_MLP(target)
+        if self.time % (args.step_num) == 1:
+            cur_state, _, infoNEC = self._train_MLP(target)
 
-        args.cluster_num = action + 2       # the number of clusters from 2 to 11
-        nmi, ari, self.predict_labels, centers, dis = clustering(cur_state.detach(), self.true_labels, args.cluster_num, device=self.device)   
-        dis = (cur_state.unsqueeze(1) - centers.unsqueeze(0)).pow(2).sum(-1) + 1
+            args.cluster_num = action + 2       # the number of clusters from 2 to 11
+            nmi, ari, self.predict_labels, centers, dis = clustering(cur_state.detach(), self.true_labels, args.cluster_num, device=self.device)   
+            dis = (cur_state.unsqueeze(1) - centers.unsqueeze(0)).pow(2).sum(-1)
 
-        # compute the clustering guidance loss function (MLP)
-        pq_loss = self._compute_clustering_loss(dis)
-        loss = infoNEC + alpha * pq_loss     # alpha is 10 in the paper.
-        loss.backward()
-        self.optimizer.step()
+            # compute the clustering guidance loss function (MLP)
+            pq_loss = self._compute_clustering_loss(dis)
+            loss = infoNEC + alpha * pq_loss     # alpha is 10 in the paper.
+            loss.backward()
+            self.optimizer.step()
 
-        # take action and observe environment (next state)
-        self.model.eval()
-        z1, z2 = self.model(self.sm_fea_s.to(self.device))
-        next_state = (z1 + z2) / 2
-        next_cluster_state = scatter(next_state, torch.tensor(self.predict_labels).to(self.device), dim=0, reduce="mean")
+            # take action and observe environment (next state)
+            self.model.eval()
+            z1, z2 = self.model(self.sm_fea_s.to(self.device))
+            next_state = (z1 + z2) / 2
+            next_cluster_state = scatter(next_state, torch.tensor(self.predict_labels).to(self.device), dim=0, reduce="mean")
+            self.state = next_state
+        else:
+            cur_state = self.state
+            args.cluster_num = action + 2       # the number of clusters from 2 to 11
+            nmi, ari, self.predict_labels, centers, dis = clustering(cur_state.detach(), self.true_labels, args.cluster_num, device=self.device)   
+            dis = (cur_state.unsqueeze(1) - centers.unsqueeze(0)).pow(2).sum(-1)
+            loss = torch.zeros(1,1)
+
+            next_state = self.state
+            next_cluster_state = scatter(next_state, torch.tensor(self.predict_labels).to(self.device), dim=0, reduce="mean")
+
         center_dis = (centers.unsqueeze(1) - centers.unsqueeze(0)).pow(2).sum(-1).mean()
+
         observation_ini = np.concatenate([next_state.cpu().detach().numpy(), next_cluster_state.cpu().detach().numpy()], axis=0)
-        rows_to_add = 2719 - observation_ini.shape[0]
+        rows_to_add = self.features.shape[0]+11 - observation_ini.shape[0]
         observation = np.pad(observation_ini, pad_width=((0, rows_to_add), (0, 0)), mode='constant', constant_values=-1)
-        reward = (center_dis.detach() - torch.min(dis, dim=1).values.mean().detach()).item()
+
+        K = len(centers)
+
+        # Inter-cluster separation
+        center_dis = (centers.unsqueeze(1) - centers.unsqueeze(0)).pow(2).sum(-1).mean()
+
+        # Intra-cluster compactness
+        intra_cluster = torch.min(dis, dim=1).values.mean().item()
+
+        # Cluster size variance
+        # arguments = torch.tensor(self.predict_labels)
+        arguments = torch.tensor(self.predict_labels, dtype=torch.long, device=self.device)
+        cluster_sizes = torch.bincount(arguments, minlength=K)
+        cluster_size_variance = torch.var(cluster_sizes.float()).item()
+        
+        # Redundant cluster penalty (empty or very small clusters)
+        empty_clusters = (cluster_sizes == 0).sum().item()
+        redundant_cluster_penalty = empty_clusters / K
+        a = 1
+        beta = 1  
+        gamma = 0
+        delta = 0
+        # Final reward
+        reward = (
+            a * center_dis
+            - beta * intra_cluster
+            - gamma * cluster_size_variance
+            - delta * redundant_cluster_penalty
+        )
+        # observation = {}
+        # observation["continuous"] = np.pad(observation_ini, pad_width=((0, rows_to_add), (0, 0)), mode='constant', constant_values=-1)
+        # observation["discrete"] = action
+        # reward = (center_dis.detach() - torch.min(dis, dim=1).values.mean().detach()).item() - pq_loss.item() * 1000
+
+        # inter_cluster = center_dis.detach()
+        # inter_cluster_norm = inter_cluster / (centers.unsqueeze(1) - centers.unsqueeze(0)).pow(2).sum(-1).max()
+        
+        # # inter_cluster_norm = inter_cluster / (inter_cluster.max() + 1e-8)
+        # intra_cluster = torch.min(dis, dim=1).values.mean().detach().item()
+        # row_min_values = torch.min(dis, dim=1).values  # Get the minimum value in each row
+        # max_of_row_min = torch.max(row_min_values)    # Get the maximum among those minimum values
+        # intra_cluster_norm = intra_cluster / max_of_row_min.item()
+        # alpha = 1
+        # beta = 1
+       
+        # reward = alpha * inter_cluster_norm - beta * intra_cluster_norm
+        
+        # reward = center_dis.detach() - torch.min(dis, dim=1).values.mean().detach().item()
+        print("Action:",args.cluster_num-2,"Inter:",center_dis.detach().item(),"Intra:", torch.min(dis, dim=1).values.mean().detach().item(),"Reward:",reward.item())
+        if self.issave:
+            torch.save(self.model.state_dict(), self.save_path)
+
         return observation, reward, nmi, ari, loss.item()
 
 
@@ -131,14 +214,17 @@ class MyGraphEnv(gym.Env):
         super().reset(seed=seed)
         args = self.args
         self.time = 0
-        self.episodes += 1
+
         args.cluster_num = np.random.randint(0, 9) + 2
         nmi, ari, self.predict_labels, _, _ = clustering(self.sm_fea_s.detach(), self.true_labels, args.cluster_num, device=self.device)
         target = torch.FloatTensor(self.adj_1st).to(self.device)
         state, cluster_state, _ = self._train_MLP(target)
         observation_ini = np.concatenate([state.cpu().detach().numpy(), cluster_state.cpu().detach().numpy()], axis=0)
-        rows_to_add = 2719 - observation_ini.shape[0]
+        rows_to_add = self.features.shape[0]+11 - observation_ini.shape[0]
         observation = np.pad(observation_ini, pad_width=((0, rows_to_add), (0, 0)), mode='constant', constant_values=-1)
+        # observation = {}
+        # observation["continuous"] = np.pad(observation_ini, pad_width=((0, rows_to_add), (0, 0)), mode='constant', constant_values=-1)
+        # observation["discrete"] = args.cluster_num-2
         if self.best_nmi < nmi:
             self.best_nmi = nmi
             self.best_ari = ari
@@ -153,6 +239,7 @@ class MyGraphEnv(gym.Env):
         # Update the state
         args = self.args
         self.time += 1
+        # print("time: ", self.time)
         args.cluster_num = action + 2
         observation, reward, nmi, ari, loss = self._two_view_MLP(action=action)
     
@@ -167,49 +254,48 @@ class MyGraphEnv(gym.Env):
         # store the loss in loss_MLP list
         self.loss_MLP.append(loss)
         self.actions.append(args.cluster_num)
+        self.records_r.append(reward.cpu().detach())
 
         if self.time >= args.step_num:
             terminated = True
-            self.records_r.append(reward)
+            print(terminated)
             mean = np.mean(self.records_r)
             self.mean_rewards.append(mean)
-            file_name = "reward_1121_100ep3.csv"
-            file = open(file_name, "a+")
-            print(reward, mean, file=file)
-            file.close()
+            # file_name = "reward_1121_4pm.csv"
+            # file = open(file_name, "a+")
+            # print(reward, mean, file=file)
+            # file.close()
             tqdm.write('episode_reward: {}, mean_reward: {}'.format(reward, mean))
-            
         else:
             terminated = False
-            self.records_r.append(reward)
-            
         
-        if self.time + self.episodes * args.step_num >= args.max_steps:
-            # open file result.csv and write down the dataset name(first line)
-            file_name = "result.csv"
-            file = open(file_name, "a+")
-            print(args.dataset, file=file)
-            # print the value of key for the best cluster, best nmi, best ari in info
-            print(info['best_cluster'], info['nmi'], info['ari'], file=file)
-            file.close()
-            # print the best_nmi and best_ari and cluster_num
-            tqdm.write("Optimization Finished!")
-            tqdm.write('best_nmi: {}, best_ari: {}, cluster_num: {}'.format(info['nmi'], info['ari'], info['best_cluster']))
+        # if self.time + self.episodes * args.step_num >= args.max_steps:
+        #     # open file result.csv and write down the dataset name(first line)
+        #     file_name = "result.csv"
+        #     file = open(file_name, "a+")
+        #     print(args.dataset, file=file)
+        #     # print the value of key for the best cluster, best nmi, best ari in info
+        #     print(info['best_cluster'], info['nmi'], info['ari'], file=file)
+        #     file.close()
+        #     # print the best_nmi and best_ari and cluster_num
+        #     tqdm.write("Optimization Finished!")
+        #     tqdm.write('best_nmi: {}, best_ari: {}, cluster_num: {}'.format(info['nmi'], info['ari'], info['best_cluster']))
 
-            # check the address of the file exists if not create
-            log_dir = "./logs/1121/"
-            os.makedirs(log_dir, exist_ok=True)
-            # save the loss_MLP in the npy file
-            np.save(os.path.join(log_dir, "loss_MLP.npy"), np.array(self.loss_MLP)) 
-            np.save(os.path.join(log_dir, "mean_rewards.npy"), np.array(self.mean_rewards))
-            np.save(os.path.join(log_dir, "action.npy"), np.array(self.actions))
+        #     # check the address of the file exists if not create
+        #     log_dir = "./logs/1121/"
+        #     os.makedirs(log_dir, exist_ok=True)
+        #     # save the loss_MLP in the npy file
+        #     np.save(os.path.join(log_dir, "loss_MLP.npy"), np.array(self.loss_MLP)) 
+        #     np.save(os.path.join(log_dir, "mean_rewards.npy"), np.array(self.mean_rewards))
+        #     np.save(os.path.join(log_dir, "action.npy"), np.array(self.actions))
+
             
         # Check termination
         # if nmi >= 0.99:
         #     terminated = True
         # else:
         #     terminated = False
-        terminated = self.time > self.args.step_num
+        
         # terminated = nmi >= 0.99  # Custom termination criterion
         truncated = False
 
